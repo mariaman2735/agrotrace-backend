@@ -42,7 +42,10 @@ const limiterReset = rateLimit({
     message: { message: 'Trop de demandes de réinitialisation, réessayez dans 1 heure.' }
 });
 
-app.use(cors());
+app.use(cors({
+    origin: ['https://agrotrace-frontend-snowy.vercel.app', 'http://localhost:3000'],
+    credentials: true
+}));
 app.use(express.json());
 app.use(limiterGeneral);
 
