@@ -1,16 +1,27 @@
+/**
+ * ============================================================
+ * AgroTrace - Contrôleur des Lots de Produits Finis
+ * Gère la production et la traçabilité des produits finis
+ * ============================================================
+ */
+
 const db = require('../config/db');
 
-// Générer un numéro de lot PF automatique
+/**
+ * Génère automatiquement un numéro de lot unique pour les produits finis
+ * Format : PF-AAAA-XXX (ex: PF-2026-001)
+ */
 const genererNumeroLotPF = async () => {
     const annee = new Date().getFullYear();
-    const [rows] = await db.query(
-        'SELECT COUNT(*) as total FROM lotproduitfini'
-    );
+    const [rows] = await db.query('SELECT COUNT(*) as total FROM lotproduitfini');
     const numero = String(rows[0].total + 1).padStart(3, '0');
     return `PF-${annee}-${numero}`;
 };
 
-// Lister tous les lots PF
+/**
+ * Récupère la liste de tous les lots de produits finis
+ * avec le numéro d'ordre de fabrication associé
+ */
 const getLotsPF = async (req, res) => {
     try {
         const [rows] = await db.query(`
@@ -25,7 +36,9 @@ const getLotsPF = async (req, res) => {
     }
 };
 
-// Obtenir un lot PF par ID
+/**
+ * Récupère un lot de produit fini par son identifiant
+ */
 const getLotPFById = async (req, res) => {
     try {
         const [rows] = await db.query(`
@@ -43,7 +56,11 @@ const getLotPFById = async (req, res) => {
     }
 };
 
-// Créer un lot PF (production)
+/**
+ * Crée un nouveau lot de produit fini à l'issue d'un ordre de fabrication
+ * Le numéro de lot est généré automatiquement
+ * L'ordre de fabrication associé est automatiquement clôturé (statut TERMINE)
+ */
 const createLotPF = async (req, res) => {
     try {
         const { dateProduction, quantiteProduite, dateDC, ordreFabrication_id } = req.body;
@@ -54,7 +71,7 @@ const createLotPF = async (req, res) => {
             });
         }
 
-        // Vérifier que l'OF existe
+        // Vérification que l'ordre de fabrication existe
         const [of] = await db.query(
             'SELECT id FROM ordrefabrication WHERE id = ?', [ordreFabrication_id]
         );
@@ -62,15 +79,17 @@ const createLotPF = async (req, res) => {
             return res.status(404).json({ message: 'Ordre de fabrication non trouvé' });
         }
 
+        // Génération du numéro de lot unique
         const numLot = await genererNumeroLotPF();
 
+        // Insertion du lot de produit fini
         const [result] = await db.query(`
             INSERT INTO lotproduitfini 
             (numLot, dateProduction, quantiteProduite, quantiteDisponible, statut, dateDC, ordreFabrication_id)
             VALUES (?, ?, ?, ?, 'EN_ATTENTE', ?, ?)
         `, [numLot, dateProduction, quantiteProduite, quantiteProduite, dateDC, ordreFabrication_id]);
 
-        // Mettre à jour le statut de l'OF en TERMINE
+        // Clôture automatique de l'ordre de fabrication
         await db.query(
             'UPDATE ordrefabrication SET statut = ?, dateCloture = ? WHERE id = ?',
             ['TERMINE', dateProduction, ordreFabrication_id]
@@ -86,7 +105,10 @@ const createLotPF = async (req, res) => {
     }
 };
 
-// Mettre à jour le statut d'un lot PF
+/**
+ * Met à jour le statut d'un lot de produit fini
+ * Statuts possibles : EN_ATTENTE, CONFORME, NON_CONFORME, BLOQUE, EPUISE
+ */
 const updateStatutLotPF = async (req, res) => {
     try {
         const { statut } = req.body;
@@ -114,9 +136,14 @@ const updateStatutLotPF = async (req, res) => {
     }
 };
 
-// Traçabilité d'un lot PF
+/**
+ * Récupère la chaîne de traçabilité complète d'un lot de produit fini
+ * Retourne : informations du lot PF + matières premières utilisées + ventes associées
+ * Conformément à la norme ISO 22005:2007
+ */
 const getTraceabilite = async (req, res) => {
     try {
+        // Récupération du lot PF avec son ordre de fabrication
         const [lotPF] = await db.query(`
             SELECT l.*, o.numOrdreFabrication
             FROM lotproduitfini l
@@ -128,7 +155,7 @@ const getTraceabilite = async (req, res) => {
             return res.status(404).json({ message: 'Lot PF non trouvé' });
         }
 
-        // Lots MP utilisés
+        // Récupération des matières premières consommées lors de la fabrication
         const [lotsMP] = await db.query(`
             SELECT c.*, m.numLot as numLotMP, f.nom as fournisseurNom
             FROM consommationmatierepremiere c
@@ -137,7 +164,7 @@ const getTraceabilite = async (req, res) => {
             WHERE c.ordreFabrication_id = ?
         `, [lotPF[0].ordreFabrication_id]);
 
-        // Ventes associées
+        // Récupération des ventes associées à ce lot
         const [ventes] = await db.query(`
             SELECT v.*, c.nom as clientNom
             FROM vente v
@@ -146,7 +173,7 @@ const getTraceabilite = async (req, res) => {
         `, [req.params.id]);
 
         res.json({
-            lotProduitFini : lotPF[0],
+            lotProduitFini: lotPF[0],
             matieresPremières: lotsMP,
             ventes
         });
