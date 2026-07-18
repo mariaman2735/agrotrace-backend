@@ -11,12 +11,14 @@ const genererNumeroLot = async () => {
 };
 
 // Lister tous les lots MP
+// AJOUT : JOIN avec matierepremiere pour avoir le nom de la matière première
 const getLotsMPList = async (req, res) => {
     try {
         const [rows] = await db.query(`
-            SELECT l.*, f.nom as fournisseurNom 
+            SELECT l.*, f.nom as fournisseurNom, mp.nom as matierePremiereNom, mp.code as matierePremiereCode
             FROM lotmatierepremiere l
             LEFT JOIN fournisseur f ON l.fournisseur_id = f.id
+            LEFT JOIN matierepremiere mp ON l.matierePremiere_id = mp.id
             ORDER BY l.dateReception DESC
         `);
         res.json(rows);
@@ -26,12 +28,14 @@ const getLotsMPList = async (req, res) => {
 };
 
 // Obtenir un lot MP par ID
+// AJOUT : JOIN avec matierepremiere
 const getLotMPById = async (req, res) => {
     try {
         const [rows] = await db.query(`
-            SELECT l.*, f.nom as fournisseurNom 
+            SELECT l.*, f.nom as fournisseurNom, mp.nom as matierePremiereNom, mp.code as matierePremiereCode
             FROM lotmatierepremiere l
             LEFT JOIN fournisseur f ON l.fournisseur_id = f.id
+            LEFT JOIN matierepremiere mp ON l.matierePremiere_id = mp.id
             WHERE l.id = ?
         `, [req.params.id]);
         if (rows.length === 0) {
@@ -44,13 +48,14 @@ const getLotMPById = async (req, res) => {
 };
 
 // Créer un lot MP (réception)
+// AJOUT : matierePremiere_id obligatoire + vérification qu'elle existe
 const createLotMP = async (req, res) => {
     try {
-        const { dateReception, quantite, dateDC, fournisseur_id } = req.body;
+        const { dateReception, quantite, dateDC, fournisseur_id, matierePremiere_id } = req.body;
 
-        if (!dateReception || !quantite || !fournisseur_id) {
-            return res.status(400).json({ 
-                message: 'dateReception, quantite et fournisseur_id sont obligatoires' 
+        if (!dateReception || !quantite || !fournisseur_id || !matierePremiere_id) {
+            return res.status(400).json({
+                message: 'dateReception, quantite, fournisseur_id et matierePremiere_id sont obligatoires'
             });
         }
 
@@ -62,14 +67,22 @@ const createLotMP = async (req, res) => {
             return res.status(404).json({ message: 'Fournisseur non trouvé' });
         }
 
+        // Vérifier que la matière première existe
+        const [mp] = await db.query(
+            'SELECT id FROM matierepremiere WHERE id = ?', [matierePremiere_id]
+        );
+        if (mp.length === 0) {
+            return res.status(404).json({ message: 'Matière première non trouvée' });
+        }
+
         // Générer le numéro de lot
         const numLot = await genererNumeroLot();
 
         const [result] = await db.query(`
-            INSERT INTO lotmatierepremiere 
-            (numLot, dateReception, quantite, quantiteRestante, statut, dateDC, fournisseur_id)
-            VALUES (?, ?, ?, ?, 'RECU', ?, ?)
-        `, [numLot, dateReception, quantite, quantite, dateDC, fournisseur_id]);
+            INSERT INTO lotmatierepremiere
+            (numLot, dateReception, quantite, quantiteRestante, statut, dateDC, fournisseur_id, matierePremiere_id)
+            VALUES (?, ?, ?, ?, 'RECU', ?, ?, ?)
+        `, [numLot, dateReception, quantite, quantite, dateDC, fournisseur_id, matierePremiere_id]);
 
         res.status(201).json({
             message: 'Lot MP créé avec succès',

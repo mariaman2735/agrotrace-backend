@@ -11,12 +11,14 @@ const genererNumeroOF = async () => {
 };
 
 // Lister tous les OF
+// AJOUT : JOIN avec produit pour avoir le nom du produit fabriqué
 const getOFs = async (req, res) => {
     try {
         const [rows] = await db.query(`
-            SELECT o.*, u.nom as operateurNom
+            SELECT o.*, u.nom as operateurNom, p.nom as produitNom, p.reference as produitReference
             FROM ordrefabrication o
             LEFT JOIN utilisateur u ON o.operateur_id = u.id
+            LEFT JOIN produit p ON o.produit_id = p.id
             ORDER BY o.dateCreation DESC
         `);
         res.json(rows);
@@ -26,12 +28,14 @@ const getOFs = async (req, res) => {
 };
 
 // Obtenir un OF par ID
+// AJOUT : JOIN avec produit
 const getOFById = async (req, res) => {
     try {
         const [rows] = await db.query(`
-            SELECT o.*, u.nom as operateurNom
+            SELECT o.*, u.nom as operateurNom, p.nom as produitNom, p.reference as produitReference
             FROM ordrefabrication o
             LEFT JOIN utilisateur u ON o.operateur_id = u.id
+            LEFT JOIN produit p ON o.produit_id = p.id
             WHERE o.id = ?
         `, [req.params.id]);
         if (rows.length === 0) {
@@ -44,24 +48,33 @@ const getOFById = async (req, res) => {
 };
 
 // Créer un OF
+// AJOUT : produit_id obligatoire + vérification qu'il existe
 const createOF = async (req, res) => {
     try {
-        const { dateCreation, dateLancement, quantitePlanifiee } = req.body;
+        const { dateCreation, dateLancement, quantitePlanifiee, produit_id } = req.body;
 
-        if (!dateCreation || !quantitePlanifiee) {
-            return res.status(400).json({ 
-                message: 'dateCreation et quantitePlanifiee sont obligatoires' 
+        if (!dateCreation || !quantitePlanifiee || !produit_id) {
+            return res.status(400).json({
+                message: 'dateCreation, quantitePlanifiee et produit_id sont obligatoires'
             });
+        }
+
+        // Vérifier que le produit existe
+        const [produit] = await db.query(
+            'SELECT id FROM produit WHERE id = ?', [produit_id]
+        );
+        if (produit.length === 0) {
+            return res.status(404).json({ message: 'Produit non trouvé' });
         }
 
         const numOrdreFabrication = await genererNumeroOF();
         const operateur_id = req.utilisateur.id;
 
         const [result] = await db.query(`
-            INSERT INTO ordrefabrication 
-            (numOrdreFabrication, dateCreation, dateLancement, quantitePlanifiee, statut, operateur_id)
-            VALUES (?, ?, ?, ?, 'PLANIFIE', ?)
-        `, [numOrdreFabrication, dateCreation, dateLancement, quantitePlanifiee, operateur_id]);
+            INSERT INTO ordrefabrication
+            (numOrdreFabrication, dateCreation, dateLancement, quantitePlanifiee, statut, operateur_id, produit_id)
+            VALUES (?, ?, ?, ?, 'PLANIFIE', ?, ?)
+        `, [numOrdreFabrication, dateCreation, dateLancement, quantitePlanifiee, operateur_id, produit_id]);
 
         res.status(201).json({
             message: 'Ordre de fabrication créé avec succès',
@@ -113,8 +126,8 @@ const consommerLotMP = async (req, res) => {
         const ordreFabrication_id = req.params.id;
 
         if (!lotMP_id || !quantiteConsommee) {
-            return res.status(400).json({ 
-                message: 'lotMP_id et quantiteConsommee sont obligatoires' 
+            return res.status(400).json({
+                message: 'lotMP_id et quantiteConsommee sont obligatoires'
             });
         }
 
@@ -126,22 +139,22 @@ const consommerLotMP = async (req, res) => {
             return res.status(404).json({ message: 'Lot MP non trouvé' });
         }
         if (lot[0].quantiteRestante < quantiteConsommee) {
-            return res.status(400).json({ 
-                message: `Quantité insuffisante. Disponible : ${lot[0].quantiteRestante}` 
+            return res.status(400).json({
+                message: `Quantité insuffisante. Disponible : ${lot[0].quantiteRestante}`
             });
         }
 
         // Enregistrer la consommation
         await db.query(`
-            INSERT INTO consommationmatierepremiere 
+            INSERT INTO consommationmatierepremiere
             (quantiteConsommee, dateConsommation, lotMP_id, ordreFabrication_id)
             VALUES (?, ?, ?, ?)
         `, [quantiteConsommee, new Date().toISOString().split('T')[0], lotMP_id, ordreFabrication_id]);
 
         // Mettre à jour la quantité restante du lot MP
         await db.query(`
-            UPDATE lotmatierepremiere 
-            SET quantiteRestante = quantiteRestante - ? 
+            UPDATE lotmatierepremiere
+            SET quantiteRestante = quantiteRestante - ?
             WHERE id = ?
         `, [quantiteConsommee, lotMP_id]);
 

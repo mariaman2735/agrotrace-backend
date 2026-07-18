@@ -90,6 +90,8 @@ app.use('/api/rappels-produit',    rappelProduitRoutes); // Rappels produit
 app.use('/api/matieres-premieres', matierePremiereRoutes); // Matières premières
 app.use('/api/demandes-acces',     demandeAccesRoutes);  // Demandes d'accès
 app.use('/api/reset-password',     resetPasswordRoutes); // Réinitialisation mot de passe
+app.use('/api/matieres-premieres', require('./src/routes/matierePremiereRoutes'));
+app.use('/api/produits', require('./src/routes/produitRoutes'));
 
 // ── Route de base ─────────────────────────────────────────────────────────
 app.get('/', (req, res) => {

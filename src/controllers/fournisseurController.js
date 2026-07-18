@@ -1,16 +1,33 @@
 const db = require('../config/db');
 
 // Lister tous les fournisseurs
+// AJOUT : pour chaque fournisseur, la liste des matières premières qu'il fournit
 const getFournisseurs = async (req, res) => {
     try {
-        const [rows] = await db.query('SELECT * FROM fournisseur');
-        res.json(rows);
+        const [fournisseurs] = await db.query('SELECT * FROM fournisseur');
+
+        const [liaisons] = await db.query(`
+            SELECT fmp.fournisseur_id, mp.id, mp.nom, mp.code
+            FROM fournisseur_matierepremiere fmp
+            JOIN matierepremiere mp ON fmp.matierePremiere_id = mp.id
+        `);
+
+        const resultat = fournisseurs.map(f => ({
+            ...f,
+            matieresPremieresFournies: liaisons
+                .filter(l => l.fournisseur_id === f.id)
+                .map(l => ({ id: l.id, nom: l.nom, code: l.code }))
+        }));
+
+        res.json(resultat);
     } catch (error) {
-        res.status(500).json({ message: 'Erreur serveur', error });
+    console.error('ERREUR getFournisseurs:', error);
+    res.status(500).json({ message: 'Erreur serveur', error });
     }
 };
 
 // Obtenir un fournisseur par ID
+// AJOUT : ses matières premières fournies
 const getFournisseurById = async (req, res) => {
     try {
         const [rows] = await db.query(
@@ -19,7 +36,15 @@ const getFournisseurById = async (req, res) => {
         if (rows.length === 0) {
             return res.status(404).json({ message: 'Fournisseur non trouvé' });
         }
-        res.json(rows[0]);
+
+        const [liaisons] = await db.query(`
+            SELECT mp.id, mp.nom, mp.code
+            FROM fournisseur_matierepremiere fmp
+            JOIN matierepremiere mp ON fmp.matierePremiere_id = mp.id
+            WHERE fmp.fournisseur_id = ?
+        `, [req.params.id]);
+
+        res.json({ ...rows[0], matieresPremieresFournies: liaisons });
     } catch (error) {
         res.status(500).json({ message: 'Erreur serveur', error });
     }
@@ -95,10 +120,44 @@ const deleteFournisseur = async (req, res) => {
     }
 };
 
+// NOUVELLE FONCTION : lier des matières premières à un fournisseur
+// Body attendu : { matierePremiereIds: [1, 3] }
+const setMatieresPremieresFournisseur = async (req, res) => {
+    try {
+        const { matierePremiereIds } = req.body;
+        const fournisseurId = req.params.id;
+
+        const [exist] = await db.query(
+            'SELECT id FROM fournisseur WHERE id = ?', [fournisseurId]
+        );
+        if (exist.length === 0) {
+            return res.status(404).json({ message: 'Fournisseur non trouvé' });
+        }
+
+        // On repart de zéro pour ce fournisseur puis on réinsère la sélection actuelle
+        await db.query(
+            'DELETE FROM fournisseur_matierepremiere WHERE fournisseur_id = ?', [fournisseurId]
+        );
+
+        if (matierePremiereIds && matierePremiereIds.length > 0) {
+            const values = matierePremiereIds.map(mpId => [fournisseurId, mpId]);
+            await db.query(
+                'INSERT INTO fournisseur_matierepremiere (fournisseur_id, matierePremiere_id) VALUES ?',
+                [values]
+            );
+        }
+
+        res.json({ message: 'Matières premières liées avec succès' });
+    } catch (error) {
+        res.status(500).json({ message: 'Erreur serveur', error });
+    }
+};
+
 module.exports = {
     getFournisseurs,
     getFournisseurById,
     createFournisseur,
     updateFournisseur,
-    deleteFournisseur
+    deleteFournisseur,
+    setMatieresPremieresFournisseur
 };

@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const {
-    getMatieresPremières,
+    getMatieresPremieres,
     getMatierePremiereById,
     createMatierePremiere,
     updateMatierePremiere,
@@ -9,7 +9,7 @@ const {
 } = require('../controllers/matierePremiereController');
 const { verifierToken, verifierRole } = require('../middlewares/auth');
 
-router.get('/', verifierToken, getMatieresPremières);
+router.get('/', verifierToken, getMatieresPremieres);
 router.get('/:id', verifierToken, getMatierePremiereById);
 router.post('/', verifierToken,
     verifierRole('ADMINISTRATEUR', 'RESP_ACHAT'), createMatierePremiere);
