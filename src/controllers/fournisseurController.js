@@ -4,7 +4,9 @@ const db = require('../config/db');
 // AJOUT : pour chaque fournisseur, la liste des matières premières qu'il fournit
 const getFournisseurs = async (req, res) => {
     try {
-        const [fournisseurs] = await db.query('SELECT * FROM fournisseur');
+        const [fournisseurs] = await db.query(
+            'SELECT * FROM fournisseur WHERE deleted_at IS NULL'
+        );
 
         const [liaisons] = await db.query(`
             SELECT fmp.fournisseur_id, mp.id, mp.nom, mp.code
@@ -31,7 +33,7 @@ const getFournisseurs = async (req, res) => {
 const getFournisseurById = async (req, res) => {
     try {
         const [rows] = await db.query(
-            'SELECT * FROM fournisseur WHERE id = ?', [req.params.id]
+            'SELECT * FROM fournisseur WHERE id = ? AND deleted_at IS NULL', [req.params.id]
         );
         if (rows.length === 0) {
             return res.status(404).json({ message: 'Fournisseur non trouvé' });
@@ -86,7 +88,7 @@ const updateFournisseur = async (req, res) => {
         const { nom, NINEA, adresse, telephone, email } = req.body;
 
         const [exist] = await db.query(
-            'SELECT id FROM fournisseur WHERE id = ?', [req.params.id]
+            'SELECT id FROM fournisseur WHERE id = ? AND deleted_at IS NULL', [req.params.id]
         );
         if (exist.length === 0) {
             return res.status(404).json({ message: 'Fournisseur non trouvé' });
@@ -103,20 +105,37 @@ const updateFournisseur = async (req, res) => {
     }
 };
 
-// Supprimer un fournisseur
+// Supprimer un fournisseur (soft delete - conservation pour traçabilité)
 const deleteFournisseur = async (req, res) => {
     try {
+        console.log("Suppression demandée. ID =", req.params.id);
+
         const [exist] = await db.query(
-            'SELECT id FROM fournisseur WHERE id = ?', [req.params.id]
+            'SELECT id FROM fournisseur WHERE id = ? AND deleted_at IS NULL',
+            [req.params.id]
         );
+
         if (exist.length === 0) {
-            return res.status(404).json({ message: 'Fournisseur non trouvé' });
+            return res.status(404).json({
+                message: 'Fournisseur non trouvé'
+            });
         }
 
-        await db.query('DELETE FROM fournisseur WHERE id = ?', [req.params.id]);
-        res.json({ message: 'Fournisseur supprimé avec succès' });
+        await db.query(
+            'UPDATE fournisseur SET deleted_at = NOW() WHERE id = ?',
+            [req.params.id]
+        );
+
+        console.log("Fournisseur archivé (soft delete)");
+
+        res.json({
+            message: 'Fournisseur archivé avec succès'
+        });
+
     } catch (error) {
-        res.status(500).json({ message: 'Erreur serveur', error });
+        res.status(500).json({
+            message: "Erreur serveur"
+        });
     }
 };
 
@@ -128,7 +147,7 @@ const setMatieresPremieresFournisseur = async (req, res) => {
         const fournisseurId = req.params.id;
 
         const [exist] = await db.query(
-            'SELECT id FROM fournisseur WHERE id = ?', [fournisseurId]
+            'SELECT id FROM fournisseur WHERE id = ? AND deleted_at IS NULL', [fournisseurId]
         );
         if (exist.length === 0) {
             return res.status(404).json({ message: 'Fournisseur non trouvé' });

@@ -3,7 +3,9 @@ const db = require('../config/db');
 // Lister tous les produits
 const getProduits = async (req, res) => {
     try {
-        const [rows] = await db.query('SELECT * FROM produit ORDER BY nom ASC');
+        const [rows] = await db.query(
+            'SELECT * FROM produit WHERE deleted_at IS NULL ORDER BY nom ASC'
+        );
         res.json(rows);
     } catch (error) {
         res.status(500).json({ message: 'Erreur serveur', error });
@@ -14,7 +16,7 @@ const getProduits = async (req, res) => {
 const getProduitById = async (req, res) => {
     try {
         const [rows] = await db.query(
-            'SELECT * FROM produit WHERE id = ?', [req.params.id]
+            'SELECT * FROM produit WHERE id = ? AND deleted_at IS NULL', [req.params.id]
         );
         if (rows.length === 0) {
             return res.status(404).json({ message: 'Produit non trouvé' });
@@ -61,7 +63,7 @@ const updateProduit = async (req, res) => {
         const { nom, reference, categorie, uniteMesure } = req.body;
 
         const [exist] = await db.query(
-            'SELECT id FROM produit WHERE id = ?', [req.params.id]
+            'SELECT id FROM produit WHERE id = ? AND deleted_at IS NULL', [req.params.id]
         );
         if (exist.length === 0) {
             return res.status(404).json({ message: 'Produit non trouvé' });
@@ -77,18 +79,20 @@ const updateProduit = async (req, res) => {
     }
 };
 
-// Supprimer un produit
+// Supprimer un produit (soft delete - conservation pour traçabilité)
 const deleteProduit = async (req, res) => {
     try {
         const [exist] = await db.query(
-            'SELECT id FROM produit WHERE id = ?', [req.params.id]
+            'SELECT id FROM produit WHERE id = ? AND deleted_at IS NULL', [req.params.id]
         );
         if (exist.length === 0) {
             return res.status(404).json({ message: 'Produit non trouvé' });
         }
 
-        await db.query('DELETE FROM produit WHERE id = ?', [req.params.id]);
-        res.json({ message: 'Produit supprimé avec succès' });
+        await db.query(
+            'UPDATE produit SET deleted_at = NOW() WHERE id = ?', [req.params.id]
+        );
+        res.json({ message: 'Produit archivé avec succès' });
     } catch (error) {
         res.status(500).json({ message: 'Erreur serveur', error });
     }
